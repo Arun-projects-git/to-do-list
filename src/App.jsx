@@ -4,13 +4,18 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import TaskList from './components/TaskList';
 import CalendarView from './components/CalendarView';
-import AIAssistant from './components/AIAssistant';
 import Analytics from './components/Analytics';
-import { Menu, Sparkles, Flame, CheckSquare } from 'lucide-react';
+import Login from './components/Login';
+import { Menu, Flame } from 'lucide-react';
 
 function AppContent() {
-  const { activeTab, streak } = useTasks();
+  const { currentUser, activeTab, streak } = useTasks();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // If the user is not logged in, show the login screen
+  if (!currentUser) {
+    return <Login />;
+  }
 
   const renderActiveView = () => {
     switch (activeTab) {
@@ -20,8 +25,6 @@ function AppContent() {
         return <TaskList />;
       case 'calendar':
         return <CalendarView />;
-      case 'ai-assistant':
-        return <AIAssistant />;
       case 'analytics':
         return <Analytics />;
       default:

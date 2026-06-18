@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTasks } from '../context/TaskContext';
 import { 
   Plus, 
@@ -14,24 +14,39 @@ import {
   Coffee,
   DollarSign,
   TrendingUp,
-  FileText
+  Trash2,
+  Calendar,
+  CheckCircle,
+  Circle,
+  ArrowRightLeft
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { 
     tasks, 
+    addTask,
+    updateTask,
+    deleteTask,
     getTodayStats, 
     getSuggestedTask, 
-    getMotivationalMessage, 
-    updateTask,
-    setActiveTab
+    getMotivationalMessage,
+    carryoverTasks,
+    handleCarryover,
+    dismissCarryover
   } = useTasks();
+
+  // Quick Task Add State
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickCategory, setQuickCategory] = useState('Study');
+  const [quickPriority, setQuickPriority] = useState('Medium');
+  const [quickTime, setQuickTime] = useState('12:00');
 
   const todayStats = getTodayStats();
   const suggestedTask = getSuggestedTask();
   const motivation = getMotivationalMessage(todayStats.percent);
+  const todayStr = new Date().toISOString().split('T')[0];
 
-  // Group tasks by category to show counts
+  // Group all tasks by category to show counts
   const categoryCounts = tasks.reduce((acc, t) => {
     acc[t.category] = (acc[t.category] || 0) + 1;
     return acc;
@@ -48,11 +63,9 @@ export default function Dashboard() {
 
   const categories = Object.keys(categoryIcons);
 
-  // Get high priority tasks for today
-  const todayStr = new Date().toISOString().split('T')[0];
-  const urgentTodayTasks = tasks.filter(
-    t => !t.completed && t.dueDate === todayStr && t.priority === 'High'
-  );
+  // All tasks for today (both completed & pending)
+  const todayTasks = tasks.filter(t => t.dueDate === todayStr);
+  const urgentTodayTasks = todayTasks.filter(t => !t.completed && t.priority === 'High');
 
   // SVG Progress Ring calculations
   const radius = 60;
@@ -60,18 +73,41 @@ export default function Dashboard() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (todayStats.percent / 100) * circumference;
 
-  const handleStartTask = (task) => {
-    // If completing the task, trigger update
-    updateTask(task.id, { completed: true });
+  const handleToggleComplete = (id, currentlyCompleted) => {
+    const nextVal = !currentlyCompleted;
+    updateTask(id, { completed: nextVal });
     
-    // Confetti effect!
-    import('canvas-confetti').then((confetti) => {
-      confetti.default({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
+    if (nextVal) {
+      import('canvas-confetti').then((confetti) => {
+        confetti.default({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
       });
+    }
+  };
+
+  const handleQuickAddToday = (e) => {
+    e.preventDefault();
+    if (!quickTitle.trim()) return;
+
+    addTask({
+      title: quickTitle.trim(),
+      description: 'Created directly from Dashboard.',
+      category: quickCategory,
+      priority: quickPriority,
+      dueDate: todayStr,
+      dueTime: quickTime,
+      reminderEnabled: false
     });
+
+    setQuickTitle('');
+  };
+
+  const handleCarryoverAll = () => {
+    const ids = carryoverTasks.map(t => t.id);
+    handleCarryover(ids, todayStr);
   };
 
   return (
@@ -79,17 +115,50 @@ export default function Dashboard() {
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Welcome back!</h1>
-          <p className="page-subtitle">Here is your productivity overview for today.</p>
+          <h1 className="page-title">My Dashboard</h1>
+          <p className="page-subtitle">Your productivity hub and task manager.</p>
         </div>
-        <button 
-          onClick={() => setActiveTab('tasks')}
-          className="btn btn-primary"
-        >
-          <Plus size={18} />
-          <span>Add New Task</span>
-        </button>
       </div>
+
+      {/* Overdue Carryover Panel directly on Dashboard */}
+      {carryoverTasks.length > 0 && (
+        <div className="carryover-banner-card glass-card" style={{ marginBottom: '1.5rem' }}>
+          <div className="carryover-card-header">
+            <div className="header-info">
+              <AlertCircle size={20} color="var(--priority-high)" />
+              <h3>Pending Tasks from Previous Days</h3>
+            </div>
+            <div className="header-actions">
+              <button onClick={handleCarryoverAll} className="btn btn-primary btn-sm">
+                <ArrowRightLeft size={14} />
+                <span>Carry Over All to Today</span>
+              </button>
+              <button onClick={dismissCarryover} className="btn btn-secondary btn-sm">
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <div className="carryover-list">
+            {carryoverTasks.slice(0, 3).map(task => (
+              <div key={task.id} className="carryover-item">
+                <span className="item-title">{task.title}</span>
+                <button 
+                  onClick={() => handleCarryover([task.id], todayStr)}
+                  className="btn-carryover-single"
+                  title="Move to Today"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            ))}
+            {carryoverTasks.length > 3 && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', padding: '0 0.5rem' }}>
+                And {carryoverTasks.length - 3} more pending task(s)...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* AI Assistant Morning Brief */}
       <div className="ai-brief-card glass-card">
@@ -116,7 +185,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <button 
-                  onClick={() => handleStartTask(suggestedTask)}
+                  onClick={() => handleToggleComplete(suggestedTask.id, suggestedTask.completed)}
                   className="btn-complete-suggested"
                   title="Mark as completed"
                 >
@@ -198,38 +267,105 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Main Grid: Urgent Tasks + Category Breakdown */}
+      {/* Main Grid: Interactive Task List + Category Breakdown */}
       <div className="dashboard-grid">
-        {/* Urgent Tasks */}
+        {/* Interactive Today's Task Manager */}
         <div className="glass-card dashboard-main-panel">
           <h2 className="section-title">
-            <AlertCircle size={20} color="var(--priority-high)" />
-            <span>Urgent Tasks Today</span>
+            <CheckCircle2 size={20} color="var(--color-primary)" />
+            <span>Today's Task Manager</span>
           </h2>
-          {urgentTodayTasks.length > 0 ? (
-            <div className="urgent-task-list">
-              {urgentTodayTasks.map(task => (
-                <div key={task.id} className="urgent-task-card">
+
+          {/* Quick Task Creation form */}
+          <form onSubmit={handleQuickAddToday} className="quick-add-today-form">
+            <input 
+              type="text" 
+              placeholder="+ Add a task for today..."
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              className="input-field quick-add-title-input"
+              required
+            />
+            <div className="quick-add-params-row">
+              <select 
+                value={quickCategory}
+                onChange={(e) => setQuickCategory(e.target.value)}
+                className="select-filter"
+              >
+                {['Study', 'Personal', 'Health', 'Work', 'Leisure', 'Finance'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <select 
+                value={quickPriority}
+                onChange={(e) => setQuickPriority(e.target.value)}
+                className="select-filter"
+              >
+                {['High', 'Medium', 'Low'].map(p => (
+                  <option key={p} value={p}>{p} Priority</option>
+                ))}
+              </select>
+              <input 
+                type="time" 
+                value={quickTime}
+                onChange={(e) => setQuickTime(e.target.value)}
+                className="select-filter"
+                style={{ width: '100px' }}
+              />
+              <button type="submit" className="btn btn-primary btn-sm">
+                Add
+              </button>
+            </div>
+          </form>
+
+          {/* Today's Tasks Checklist */}
+          {todayTasks.length > 0 ? (
+            <div className="urgent-task-list" style={{ marginTop: '1.25rem' }}>
+              {todayTasks.map(task => (
+                <div key={task.id} className={`urgent-task-card ${task.completed ? 'task-completed' : ''}`}>
                   <div className="urgent-card-left">
-                    <input 
-                      type="checkbox"
-                      className="task-checkbox"
-                      checked={task.completed}
-                      onChange={() => handleStartTask(task)}
-                    />
+                    <button 
+                      onClick={() => handleToggleComplete(task.id, task.completed)}
+                      className="agenda-checkbox-btn"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.15rem' }}
+                    >
+                      {task.completed ? (
+                        <CheckCircle size={18} color="var(--color-success)" />
+                      ) : (
+                        <Circle size={18} color="var(--text-tertiary)" />
+                      )}
+                    </button>
                     <div className="urgent-task-info">
-                      <div className="urgent-task-name">{task.title}</div>
-                      <div className="urgent-task-time">{task.dueTime}</div>
+                      <span className="urgent-task-name" style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
+                        {task.title}
+                      </span>
+                      <div className="urgent-task-time">
+                        <Clock size={10} style={{ marginRight: '3px', verticalAlign: 'middle' }} />
+                        <span style={{ verticalAlign: 'middle' }}>{task.dueTime}</span>
+                      </div>
                     </div>
                   </div>
-                  <span className={`cat-tag ${task.category}`}>{task.category}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span className={`cat-tag ${task.category}`}>{task.category}</span>
+                    <span className={`badge badge-${task.priority.toLowerCase()}`} style={{ fontSize: '10px' }}>
+                      {task.priority}
+                    </span>
+                    <button 
+                      onClick={() => deleteTask(task.id)}
+                      className="card-action-btn delete tooltip"
+                      data-tooltip="Delete Task"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="empty-state">
               <CheckCircle2 size={40} className="empty-icon" />
-              <p>No urgent tasks left for today! You're in a safe zone.</p>
+              <p>No tasks scheduled for today. Start by adding one above!</p>
             </div>
           )}
         </div>

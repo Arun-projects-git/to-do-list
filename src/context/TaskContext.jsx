@@ -2,84 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const TaskContext = createContext();
 
-// Default task list for first-time users
-const DEFAULT_TASKS = [
-  {
-    id: 'def-1',
-    title: 'Review Lecture Notes on Operating Systems',
-    description: 'Go through chapters 3 and 4. Focus on CPU scheduling algorithms.',
-    category: 'Study',
-    priority: 'High',
-    dueDate: new Date().toISOString().split('T')[0],
-    dueTime: '10:00',
-    completed: false,
-    createdDate: new Date().toISOString().split('T')[0],
-    reminderEnabled: true,
-  },
-  {
-    id: 'def-2',
-    title: 'Prep work for team weekly sync',
-    description: 'Draft the project timeline slides and check team velocity metric.',
-    category: 'Work',
-    priority: 'Medium',
-    dueDate: new Date().toISOString().split('T')[0],
-    dueTime: '14:30',
-    completed: true,
-    completedAt: new Date().toISOString(),
-    createdDate: new Date().toISOString().split('T')[0],
-    reminderEnabled: false,
-  },
-  {
-    id: 'def-3',
-    title: '30-minute cardio workout',
-    description: 'Morning run or HIIT session in the gym.',
-    category: 'Health',
-    priority: 'Medium',
-    dueDate: new Date().toISOString().split('T')[0],
-    dueTime: '08:00',
-    completed: true,
-    completedAt: new Date().toISOString(),
-    createdDate: new Date().toISOString().split('T')[0],
-    reminderEnabled: true,
-  },
-  {
-    id: 'def-4',
-    title: 'Organize work desk and room',
-    description: 'Clean up notes, dust off monitor, file invoices.',
-    category: 'Personal',
-    priority: 'Low',
-    dueDate: new Date().toISOString().split('T')[0],
-    dueTime: '18:00',
-    completed: false,
-    createdDate: new Date().toISOString().split('T')[0],
-    reminderEnabled: false,
-  },
-  {
-    id: 'def-5',
-    title: 'Buy groceries for the week',
-    description: 'Need eggs, milk, spinach, chicken breast, oats, and bananas.',
-    category: 'Personal',
-    priority: 'Medium',
-    dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // tomorrow
-    dueTime: '17:00',
-    completed: false,
-    createdDate: new Date().toISOString().split('T')[0],
-    reminderEnabled: false,
-  },
-  {
-    id: 'def-6',
-    title: 'Unfinished reading assignment',
-    description: 'Chapters 1-2 of research methodology paper.',
-    category: 'Study',
-    priority: 'High',
-    dueDate: new Date(Date.now() - 86400000).toISOString().split('T')[0], // yesterday
-    dueTime: '16:00',
-    completed: false,
-    createdDate: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-    reminderEnabled: false,
-  }
-];
-
 const MOTIVATIONAL_MESSAGES = {
   zero: [
     "A journey of a thousand miles begins with a single step. Let's cross off that first task! 🚀",
@@ -104,10 +26,14 @@ const MOTIVATIONAL_MESSAGES = {
 };
 
 export const TaskProvider = ({ children }) => {
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('zentodo_tasks');
-    return saved ? JSON.parse(saved) : DEFAULT_TASKS;
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem('zentodo_user');
+    return savedUser ? JSON.parse(savedUser) : null;
   });
+
+  // Load tasks dynamically based on currentUser
+  const [tasks, setTasks] = useState([]);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [theme, setTheme] = useState(() => {
@@ -115,7 +41,7 @@ export const TaskProvider = ({ children }) => {
   });
 
   const [streak, setStreak] = useState(() => {
-    return parseInt(localStorage.getItem('zentodo_streak')) || 3; // start with a nice default 3-day streak
+    return parseInt(localStorage.getItem('zentodo_streak')) || 0; // starts at 0 for new accounts
   });
 
   const [lastStreakUpdateDate, setLastStreakUpdateDate] = useState(() => {
@@ -126,11 +52,33 @@ export const TaskProvider = ({ children }) => {
   const [carryoverTasks, setCarryoverTasks] = useState([]);
   const [hasPromptedCarryover, setHasPromptedCarryover] = useState(false);
 
-  // Sync to local storage
+  // Dynamic tasks loader when user changes
   useEffect(() => {
-    localStorage.setItem('zentodo_tasks', JSON.stringify(tasks));
-    calculateStreak();
-  }, [tasks]);
+    if (currentUser) {
+      const savedTasks = localStorage.getItem(`zentodo_tasks_${currentUser.email}`);
+      setTasks(savedTasks ? JSON.parse(savedTasks) : []);
+      
+      const savedUserStreak = localStorage.getItem(`zentodo_streak_${currentUser.email}`);
+      setStreak(savedUserStreak ? parseInt(savedUserStreak) : 0);
+      
+      const savedUserStreakDate = localStorage.getItem(`zentodo_last_streak_date_${currentUser.email}`);
+      setLastStreakUpdateDate(savedUserStreakDate || '');
+      
+      setHasPromptedCarryover(false);
+    } else {
+      setTasks([]);
+      setStreak(0);
+      setLastStreakUpdateDate('');
+    }
+  }, [currentUser]);
+
+  // Sync tasks to local storage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(`zentodo_tasks_${currentUser.email}`, JSON.stringify(tasks));
+      calculateStreak();
+    }
+  }, [tasks, currentUser]);
 
   // Sync theme
   useEffect(() => {
@@ -138,27 +86,45 @@ export const TaskProvider = ({ children }) => {
     localStorage.setItem('zentodo_theme', theme);
   }, [theme]);
 
-  // Check for carryover tasks from previous days on mount
+  // Check for carryover tasks from previous days on mount/task change
   useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const pendingFromPast = tasks.filter(t => !t.completed && t.dueDate < todayStr);
-    if (pendingFromPast.length > 0 && !hasPromptedCarryover) {
-      setCarryoverTasks(pendingFromPast);
+    if (currentUser && tasks.length > 0) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const pendingFromPast = tasks.filter(t => !t.completed && t.dueDate < todayStr);
+      if (pendingFromPast.length > 0 && !hasPromptedCarryover) {
+        setCarryoverTasks(pendingFromPast);
+      } else if (pendingFromPast.length === 0) {
+        setCarryoverTasks([]);
+      }
+    } else {
+      setCarryoverTasks([]);
     }
-  }, [tasks, hasPromptedCarryover]);
+  }, [tasks, currentUser, hasPromptedCarryover]);
 
-  // Toggle theme
+  // Google Sign-In Simulation
+  const loginWithGoogle = (email, name) => {
+    const user = { email, name };
+    setCurrentUser(user);
+    localStorage.setItem('zentodo_user', JSON.stringify(user));
+  };
+
+  // Logout
+  const logout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('zentodo_user');
+  };
+
+  // Toggle theme (Fixed Double Toggle Bug)
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'theme');
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
   // Streak Tracker logic
   const calculateStreak = () => {
+    if (!currentUser || tasks.length === 0) return;
     const todayStr = new Date().toISOString().split('T')[0];
     
     // Group completed tasks by date
-    const completedDates = new Set();
     const tasksByDate = {};
 
     tasks.forEach(t => {
@@ -168,30 +134,20 @@ export const TaskProvider = ({ children }) => {
       tasksByDate[t.dueDate].total += 1;
       if (t.completed) {
         tasksByDate[t.dueDate].completed += 1;
-        completedDates.add(t.dueDate);
       }
     });
 
-    // Check if yesterday was completed
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
     const todayTasks = tasksByDate[todayStr] || { total: 0, completed: 0 };
-    const yesterdayTasks = tasksByDate[yesterdayStr] || { total: 0, completed: 0 };
 
-    // Simple streak logic:
-    // If today is completed (at least 1 task, and completed = total)
-    // and we haven't updated streak today, check if yesterday was completed.
-    // To make it simple & responsive: we check if today is fully completed. If so, and last update wasn't today, increment streak.
+    // A streak triggers if today is fully completed and has at least one task
     const isTodayCompleted = todayTasks.total > 0 && todayTasks.completed === todayTasks.total;
     
     if (isTodayCompleted && lastStreakUpdateDate !== todayStr) {
       const newStreak = streak + 1;
       setStreak(newStreak);
       setLastStreakUpdateDate(todayStr);
-      localStorage.setItem('zentodo_streak', newStreak.toString());
-      localStorage.setItem('zentodo_last_streak_date', todayStr);
+      localStorage.setItem(`zentodo_streak_${currentUser.email}`, newStreak.toString());
+      localStorage.setItem(`zentodo_last_streak_date_${currentUser.email}`, todayStr);
     }
   };
 
@@ -232,7 +188,6 @@ export const TaskProvider = ({ children }) => {
       }
       return t;
     }));
-    // Remove from the carryover notification list
     setCarryoverTasks(prev => prev.filter(t => !taskIds.includes(t.id)));
     setHasPromptedCarryover(true);
   };
@@ -249,7 +204,6 @@ export const TaskProvider = ({ children }) => {
     else if (completionRate >= 70) pool = MOTIVATIONAL_MESSAGES.high;
     else if (completionRate > 0) pool = MOTIVATIONAL_MESSAGES.low;
 
-    // Pick index based on current day of the month so it stays consistent for the day
     const index = new Date().getDate() % pool.length;
     return pool[index];
   };
@@ -260,35 +214,23 @@ export const TaskProvider = ({ children }) => {
     
     if (pendingTasks.length === 0) return null;
 
-    // Rank pending tasks:
-    // 1. High priority due today or overdue
-    // 2. Medium priority due today or overdue
-    // 3. Low priority due today or overdue
-    // 4. Time matching: if current hour is morning (before 12 PM) prefer Study/Work. 
-    //    If afternoon (12-5 PM) prefer Work/Finance. 
-    //    If evening (after 5 PM) prefer Health/Personal/Leisure.
-
     const currentHour = new Date().getHours();
 
     const ranked = [...pendingTasks].sort((a, b) => {
-      // Priority weighting
       const pMap = { High: 3, Medium: 2, Low: 1 };
       const pDiff = pMap[b.priority] - pMap[a.priority];
       if (pDiff !== 0) return pDiff;
 
-      // Overdue status weighting
       const aIsOverdue = a.dueDate < todayStr ? 1 : 0;
       const bIsOverdue = b.dueDate < todayStr ? 1 : 0;
       const overdueDiff = bIsOverdue - aIsOverdue;
       if (overdueDiff !== 0) return overdueDiff;
 
-      // Time of day relevance
       const aTimeRelevance = getCategoryTimeScore(a.category, currentHour);
       const bTimeRelevance = getCategoryTimeScore(b.category, currentHour);
       const timeDiff = bTimeRelevance - aTimeRelevance;
       if (timeDiff !== 0) return timeDiff;
 
-      // Fallback: earliest time
       return a.dueTime.localeCompare(b.dueTime);
     });
 
@@ -322,6 +264,9 @@ export const TaskProvider = ({ children }) => {
 
   return (
     <TaskContext.Provider value={{
+      currentUser,
+      loginWithGoogle,
+      logout,
       tasks,
       activeTab,
       setActiveTab,

@@ -1,27 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useTasks } from '../context/TaskContext';
 import { 
   LayoutDashboard, 
   CheckSquare, 
   Calendar, 
-  Sparkles, 
   BarChart2, 
   Sun, 
   Moon, 
-  Menu, 
   X, 
   Flame,
-  CheckCircle2
+  CheckCircle2,
+  LogOut
 } from 'lucide-react';
 
 export default function Sidebar({ isOpen, toggleMobileSidebar }) {
-  const { activeTab, setActiveTab, theme, toggleTheme, streak } = useTasks();
+  const { currentUser, logout, activeTab, setActiveTab, theme, toggleTheme, streak } = useTasks();
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'ai-assistant', label: 'AI Planner', icon: Sparkles },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   ];
 
@@ -29,6 +27,12 @@ export default function Sidebar({ isOpen, toggleMobileSidebar }) {
     setActiveTab(tabId);
     if (isOpen) {
       toggleMobileSidebar();
+    }
+  };
+
+  const handleLogoutClick = () => {
+    if (window.confirm("Are you sure you want to sign out?")) {
+      logout();
     }
   };
 
@@ -106,12 +110,25 @@ export default function Sidebar({ isOpen, toggleMobileSidebar }) {
               </>
             )}
           </button>
-          <div className="user-profile">
-            <div className="user-avatar">U</div>
-            <div className="user-info">
-              <span className="user-name">Guest User</span>
-              <span className="user-role">Student / Professional</span>
+          
+          <div className="sidebar-user-section">
+            <div className="user-profile">
+              <div className="user-avatar">
+                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{currentUser?.name || 'Guest User'}</span>
+                <span className="user-role">{currentUser?.email || 'user@gmail.com'}</span>
+              </div>
             </div>
+            <button 
+              onClick={handleLogoutClick}
+              className="btn-logout-icon tooltip"
+              data-tooltip="Sign Out"
+              aria-label="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </aside>
