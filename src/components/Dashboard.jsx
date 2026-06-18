@@ -196,7 +196,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="ai-no-suggestions">
-              🎉 All caught up! You have no pending tasks left for today. Keep up the excellent work!
+              🎉 Update Soon !
             </div>
           )}
         </div>
